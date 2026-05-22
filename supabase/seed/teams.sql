@@ -1,0 +1,13 @@
+INSERT INTO teams (name, flag_emoji, group_letter) VALUES
+('México','🇲🇽','A'),('Sudáfrica','🇿🇦','A'),('Corea del Sur','🇰🇷','A'),('Chequia','🇨🇿','A'),
+('Canadá','🇨🇦','B'),('Bosnia y Herz.','🇧🇦','B'),('Catar','🇶🇦','B'),('Suiza','🇨🇭','B'),
+('Brasil','🇧🇷','C'),('Marruecos','🇲🇦','C'),('Haití','🇭🇹','C'),('Escocia','🏴󠁧󠁢󠁳󠁣󠁴󠁿','C'),
+('EE.UU.','🇺🇸','D'),('Paraguay','🇵🇾','D'),('Australia','🇦🇺','D'),('Turquía','🇹🇷','D'),
+('Alemania','🇩🇪','E'),('Curaçao','🇨🇼','E'),('Costa de Marfil','🇨🇮','E'),('Ecuador','🇪🇨','E'),
+('Países Bajos','🇳🇱','F'),('Japón','🇯🇵','F'),('Suecia','🇸🇪','F'),('Túnez','🇹🇳','F'),
+('Bélgica','🇧🇪','G'),('Egipto','🇪🇬','G'),('Irán','🇮🇷','G'),('Nueva Zelanda','🇳🇿','G'),
+('España','🇪🇸','H'),('Cabo Verde','🇨🇻','H'),('Arabia Saudí','🇸🇦','H'),('Uruguay','🇺🇾','H'),
+('Francia','🇫🇷','I'),('Senegal','🇸🇳','I'),('Irak','🇮🇶','I'),('Noruega','🇳🇴','I'),
+('Argentina','🇦🇷','J'),('Argelia','🇩🇿','J'),('Austria','🇦🇹','J'),('Jordania','🇯🇴','J'),
+('Portugal','🇵🇹','K'),('RD Congo','🇨🇩','K'),('Uzbekistán','🇺🇿','K'),('Colombia','🇨🇴','K'),
+('Inglaterra','🏴󠁧󠁢󠁥󠁮󠁧󠁿','L'),('Croacia','🇭🇷','L'),('Ghana','🇬🇭','L'),('Panamá','🇵🇦','L');
