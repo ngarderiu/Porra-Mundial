@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
@@ -9,9 +10,9 @@ export async function GET(request: Request) {
 
   if (code) {
     const cookieStore = await cookies()
-    // Build the redirect response first so setAll writes cookies directly onto it.
-    // If we create it after exchangeCodeForSession the auth cookies get lost and
-    // the browser follows the redirect without a session (causing the /login loop).
+    // Collect cookies set during exchangeCodeForSession so we can copy them
+    // onto whichever redirect response we end up returning.
+    const collectedCookies: Array<{ name: string; value: string; options: object }> = []
     const response = NextResponse.redirect(new URL(next, origin))
 
     const supabase = createServerClient(
@@ -26,6 +27,7 @@ export async function GET(request: Request) {
             cookiesToSet.forEach(({ name, value, options }) => {
               cookieStore.set(name, value, options)
               response.cookies.set(name, value, options)
+              collectedCookies.push({ name, value, options })
             })
           },
         },
@@ -34,6 +36,30 @@ export async function GET(request: Request) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (user) {
+        const adminClient = createAdminClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!
+        )
+        const { data: profile } = await adminClient
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .single()
+
+        if (!profile) {
+          const onboardingResponse = NextResponse.redirect(new URL('/onboarding', origin))
+          collectedCookies.forEach(({ name, value, options }) =>
+            onboardingResponse.cookies.set(name, value, options as Parameters<typeof onboardingResponse.cookies.set>[2])
+          )
+          return onboardingResponse
+        }
+      }
+
       return response
     }
   }
