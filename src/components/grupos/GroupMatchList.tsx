@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
-import { TEAM_FLAGS } from '@/lib/constants'
+import { TEAM_FLAGS, TEAM_ABBR } from '@/lib/constants'
 import type { Match } from '@/types'
 import type { MatchScore, PredictionMap } from '@/lib/bracket'
 
@@ -16,31 +16,6 @@ interface Props {
   teamNameById: Record<number, string>
   onScoreChange: (matchNumber: number, field: 'homeGoals' | 'awayGoals', value: number) => void
   onSave: (matchNumber: number) => void
-}
-
-function SaveIndicator({ status }: { status: SaveStatus }) {
-  if (status === 'saving') {
-    return (
-      <span className="text-xs text-gray-400 animate-pulse" aria-live="polite">
-        ●
-      </span>
-    )
-  }
-  if (status === 'saved') {
-    return (
-      <span className="text-xs text-green-500" aria-live="polite" aria-label="Guardado">
-        ✓
-      </span>
-    )
-  }
-  if (status === 'error') {
-    return (
-      <span className="text-xs text-red-500 font-medium" aria-live="assertive">
-        Error
-      </span>
-    )
-  }
-  return null
 }
 
 interface MatchRowProps {
@@ -69,17 +44,12 @@ function MatchRow({
   const prevHome = useRef(prediction?.homeGoals ?? null)
   const prevAway = useRef(prediction?.awayGoals ?? null)
 
-  const inputBase = `
-    w-12 h-12 text-center text-lg font-semibold rounded-lg border
-    focus:outline-none focus:ring-2 focus:ring-blue-500
-    transition-colors duration-150
-    [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none
-  `
-  const inputEnabled = 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100'
-  const inputDisabled = 'bg-gray-100 dark:bg-gray-700 border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed'
+  const homeFlag = TEAM_FLAGS[homeTeam] ?? '🏳'
+  const awayFlag = TEAM_FLAGS[awayTeam] ?? '🏳'
+  const homeAbbr = TEAM_ABBR[homeTeam] ?? homeTeam.slice(0, 3).toUpperCase()
+  const awayAbbr = TEAM_ABBR[awayTeam] ?? awayTeam.slice(0, 3).toUpperCase()
 
-  const homeVal = prediction?.homeGoals
-  const awayVal = prediction?.awayGoals
+  const hasPrediction = prediction?.homeGoals != null && prediction?.awayGoals != null
 
   function handleBlur() {
     const hg = prediction?.homeGoals ?? null
@@ -92,86 +62,87 @@ function MatchRow({
     }
   }
 
-  const homeFlag = TEAM_FLAGS[homeTeam] ?? '🏳'
-  const awayFlag = TEAM_FLAGS[awayTeam] ?? '🏳'
+  const inputBase = [
+    'w-12 h-9 text-center text-sm font-semibold rounded border',
+    'focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200',
+    'transition-colors duration-150',
+    '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none',
+  ].join(' ')
+
+  const inputEnabled = hasPrediction
+    ? 'bg-white border-green-400 text-gray-900'
+    : 'bg-white border-gray-300 text-gray-900'
+  const inputDisabled = 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed'
 
   return (
-    <div
-      className={`flex items-center gap-2 px-4 py-3 ${
-        locked ? 'bg-gray-50 dark:bg-gray-800/50' : ''
-      }`}
-    >
-      {/* Home team */}
-      <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate text-right">
-          {homeTeam}
-        </span>
-        <span className="text-lg shrink-0" aria-hidden="true">{homeFlag}</span>
+    <div className={`flex items-center gap-1.5 px-3 py-1.5 ${locked ? 'opacity-60' : ''}`}>
+      {/* Home: FLAG ABBR */}
+      <div className="flex items-center gap-1 w-[58px] justify-end shrink-0">
+        <span className="text-base leading-none" aria-hidden="true">{homeFlag}</span>
+        <span className="text-[11px] font-mono font-semibold text-gray-600 tracking-tight">{homeAbbr}</span>
       </div>
 
-      {/* Score inputs */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          max={20}
-          value={homeVal ?? ''}
-          disabled={disabled}
-          aria-label={`Goles ${homeTeam}, partido ${match.match_number}`}
-          className={`${inputBase} ${disabled ? inputDisabled : inputEnabled}`}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10)
-            if (!isNaN(v) && v >= 0 && v <= 20) onScoreChange('homeGoals', v)
-          }}
-          onFocus={(e) => e.target.select()}
-          onBlur={handleBlur}
-        />
-        <span className="text-gray-400 font-bold text-sm">–</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min={0}
-          max={20}
-          value={awayVal ?? ''}
-          disabled={disabled}
-          aria-label={`Goles ${awayTeam}, partido ${match.match_number}`}
-          className={`${inputBase} ${disabled ? inputDisabled : inputEnabled}`}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10)
-            if (!isNaN(v) && v >= 0 && v <= 20) onScoreChange('awayGoals', v)
-          }}
-          onFocus={(e) => e.target.select()}
-          onBlur={handleBlur}
-        />
+      {/* Home input */}
+      <input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={20}
+        value={prediction?.homeGoals ?? ''}
+        disabled={disabled}
+        aria-label={`Goles ${homeTeam}, partido ${match.match_number}`}
+        className={`${inputBase} ${disabled ? inputDisabled : inputEnabled}`}
+        onChange={(e) => {
+          const v = parseInt(e.target.value, 10)
+          if (!isNaN(v) && v >= 0 && v <= 20) onScoreChange('homeGoals', v)
+        }}
+        onFocus={(e) => e.target.select()}
+        onBlur={handleBlur}
+      />
+
+      {/* Separator */}
+      <span className="text-gray-400 text-xs font-bold shrink-0">–</span>
+
+      {/* Away input */}
+      <input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={20}
+        value={prediction?.awayGoals ?? ''}
+        disabled={disabled}
+        aria-label={`Goles ${awayTeam}, partido ${match.match_number}`}
+        className={`${inputBase} ${disabled ? inputDisabled : inputEnabled}`}
+        onChange={(e) => {
+          const v = parseInt(e.target.value, 10)
+          if (!isNaN(v) && v >= 0 && v <= 20) onScoreChange('awayGoals', v)
+        }}
+        onFocus={(e) => e.target.select()}
+        onBlur={handleBlur}
+      />
+
+      {/* Away: ABBR FLAG */}
+      <div className="flex items-center gap-1 w-[58px] shrink-0">
+        <span className="text-[11px] font-mono font-semibold text-gray-600 tracking-tight">{awayAbbr}</span>
+        <span className="text-base leading-none" aria-hidden="true">{awayFlag}</span>
       </div>
 
-      {/* Away team */}
-      <div className="flex items-center gap-1.5 flex-1 justify-start min-w-0">
-        <span className="text-lg shrink-0" aria-hidden="true">{awayFlag}</span>
-        <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-          {awayTeam}
-        </span>
-      </div>
-
-      {/* Status + locked badge */}
-      <div className="w-8 shrink-0 flex justify-center">
-        {locked ? (
-          <span
-            className="text-[10px] font-medium text-gray-400 dark:text-gray-500 border border-gray-300 dark:border-gray-600 rounded px-1 py-0.5"
-            title="Partido bloqueado"
-          >
-            🔒
-          </span>
-        ) : (
-          <SaveIndicator status={status} />
+      {/* Status indicator */}
+      <div className="w-4 shrink-0 flex items-center justify-center">
+        {locked && <span className="text-[10px] text-gray-400" title="Partido bloqueado">🔒</span>}
+        {!locked && status === 'saving' && (
+          <span className="text-[10px] text-gray-400 animate-pulse" aria-live="polite">●</span>
+        )}
+        {!locked && status === 'saved' && (
+          <span className="text-[10px] text-green-500" aria-live="polite" aria-label="Guardado">✓</span>
+        )}
+        {!locked && status === 'error' && (
+          <span className="text-[10px] text-red-500 font-bold" aria-live="assertive">!</span>
         )}
       </div>
     </div>
   )
 }
-
-const JORNADA_LABEL = ['Jornada 1', 'Jornada 1', 'Jornada 2', 'Jornada 2', 'Jornada 3', 'Jornada 3']
 
 export default function GroupMatchList({
   matches,
@@ -184,23 +155,14 @@ export default function GroupMatchList({
   onSave,
 }: Props) {
   return (
-    <div className="divide-y divide-gray-100 dark:divide-gray-700">
-      {matches.map((match, idx) => {
-        const jornada = JORNADA_LABEL[idx]
-        const showJornada = idx === 0 || jornada !== JORNADA_LABEL[idx - 1]
+    <div className="divide-y divide-gray-100">
+      {matches.map((match) => {
         const homeTeam = teamNameById[match.home_team_id!] ?? '?'
         const awayTeam = teamNameById[match.away_team_id!] ?? '?'
         const locked = lockedMatches.has(match.match_number)
 
         return (
           <div key={match.match_number}>
-            {showJornada && (
-              <div className="px-4 pt-3 pb-1">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
-                  {jornada}
-                </span>
-              </div>
-            )}
             <MatchRow
               match={match}
               prediction={predictions[match.match_number]}
@@ -213,8 +175,8 @@ export default function GroupMatchList({
               onSave={() => onSave(match.match_number)}
             />
             {(savingStatus[match.match_number] ?? 'idle') === 'error' && (
-              <p className="px-4 pb-2 text-xs text-red-500">
-                Error al guardar el partido {match.match_number}. Reintenta cambiando el valor.
+              <p className="px-3 pb-1.5 text-[10px] text-red-500">
+                Error al guardar. Reintenta.
               </p>
             )}
           </div>
