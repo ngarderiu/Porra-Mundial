@@ -217,7 +217,7 @@ export async function getAllParticipantsWithStats(): Promise<ParticipantStats[]>
     }
   }
 
-  return profiles.map((profile: { id: string; display_name: string }) => {
+  return profiles.map((profile: { id: string; display_name: string | null }) => {
     const groupPreds = userGroupPreds[profile.id] ?? {}
     const koPreds = userKoPreds[profile.id] ?? {}
     const { total, breakdown } = calcUserScore(
@@ -229,7 +229,7 @@ export async function getAllParticipantsWithStats(): Promise<ParticipantStats[]>
     )
     return {
       userId: profile.id,
-      displayName: profile.display_name,
+      displayName: profile.display_name ?? '',
       groupPredictions: Object.keys(groupPreds).length,
       koPredictions: Object.keys(koPreds).length,
       totalScore: total,

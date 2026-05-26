@@ -1,11 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { loginWithEmail } from './actions'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -14,40 +13,18 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    const supabase = createClient()
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${appUrl}/auth/callback` },
-    })
-
-    if (error) {
-      setError(error.message)
-    } else {
-      setSent(true)
+    const result = await loginWithEmail(email)
+    if (result?.error) {
+      setError(result.error)
+      setLoading(false)
     }
-    setLoading(false)
-  }
-
-  if (sent) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white rounded-xl shadow p-8 max-w-sm w-full text-center">
-          <h1 className="text-2xl font-bold mb-2">Revisa tu email</h1>
-          <p className="text-gray-600">
-            Hemos enviado un enlace mágico a <strong>{email}</strong>.
-            Haz clic en él para acceder.
-          </p>
-        </div>
-      </main>
-    )
   }
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white rounded-xl shadow p-8 max-w-sm w-full">
         <h1 className="text-2xl font-bold mb-1">Porra Mundial 2026</h1>
-        <p className="text-gray-500 mb-6 text-sm">Introduce tu email para recibir un enlace de acceso.</p>
+        <p className="text-gray-500 mb-6 text-sm">Introduce tu email para acceder.</p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
@@ -69,7 +46,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
-            {loading ? 'Enviando...' : 'Enviar enlace mágico'}
+            {loading ? 'Verificando...' : 'Entrar'}
           </button>
         </form>
       </div>

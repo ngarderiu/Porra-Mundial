@@ -26,7 +26,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           ⚙️ Admin Panel · Porra Mundial 2026
         </span>
         <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-400 hidden sm:block">{profile.display_name}</span>
+          <span className="text-sm text-gray-400 hidden sm:block">{profile.display_name ?? ''}</span>
           <LogoutButton />
         </div>
       </header>
