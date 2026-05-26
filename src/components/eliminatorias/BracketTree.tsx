@@ -1,25 +1,18 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState, useCallback } from 'react'
+import { useMemo } from 'react'
 import {
   BRACKET_R32,
   BRACKET_R16,
   BRACKET_QF,
   BRACKET_SF,
-  BRACKET_THIRD,
   BRACKET_FINAL,
 } from '@/lib/constants'
 import BracketMatchCard from './BracketMatchCard'
 import RoundHeader from './RoundHeader'
-import type { ResolvedMatch, PredictionMap, MatchScore } from '@/lib/bracket'
+import type { ResolvedMatch, PredictionMap } from '@/lib/bracket'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
-
-interface SvgLine {
-  d: string
-  color: string
-  key: string
-}
 
 interface Props {
   resolvedBracket: ResolvedMatch[]
@@ -33,30 +26,50 @@ interface Props {
 }
 
 const CARD_W = 160
-const CARD_H = 72 // approximate — actual height includes penalty selector
+const CARD_H = 72
 const COL_GAP = 56
-const ROW_GAP_R32 = 8
-const CONNECTOR_OFFSET = COL_GAP / 2
+const SLOT_H = CARD_H + 8 // 80 — vertical slot per card in R32
 
-const ROUNDS = [
-  { brackets: BRACKET_R32, label: 'Ronda de 32', key: 'r32' },
-  { brackets: BRACKET_R16, label: 'Octavos', key: 'r16' },
-  { brackets: BRACKET_QF, label: 'Cuartos', key: 'qf' },
-  { brackets: BRACKET_SF, label: 'Semis', key: 'sf' },
-  { brackets: BRACKET_FINAL, label: 'Final', key: 'final' },
+// Round columns in display order
+const ROUND_COLS = [BRACKET_R32, BRACKET_R16, BRACKET_QF, BRACKET_SF, BRACKET_FINAL]
+const ROUND_X = ROUND_COLS.map((_, i) => i * (CARD_W + COL_GAP))
+const TOTAL_W = ROUND_X[4] + CARD_W // 1024
+const CONTAINER_H = BRACKET_R32.length * SLOT_H // 1280
+
+// Y center for each match: sequential index within its round column
+const MATCH_Y: Record<number, number> = {}
+const MATCH_COL: Record<number, number> = {}
+ROUND_COLS.forEach((round, colIdx) => {
+  round.forEach(({ matchNumber }, i) => {
+    MATCH_Y[matchNumber] = i * SLOT_H + CARD_H / 2
+    MATCH_COL[matchNumber] = colIdx
+  })
+})
+// Third place sits in the SF column after both SF cards
+const THIRD_TOP = 2 * SLOT_H + 24 // 24px gap below SF matches
+MATCH_COL[103] = 3
+
+// Parent map: child → [homeParent, awayParent]
+const PARENT_MAP: Record<number, [number, number]> = {}
+;[...BRACKET_R16, ...BRACKET_QF, ...BRACKET_SF, ...BRACKET_FINAL].forEach(
+  ({ matchNumber, homeSlot, awaySlot }) => {
+    const hm = homeSlot.match(/^W(\d+)$/)
+    const am = awaySlot.match(/^W(\d+)$/)
+    if (hm && am) {
+      PARENT_MAP[matchNumber] = [parseInt(hm[1]), parseInt(am[1])]
+    }
+  }
+)
+
+const COLUMNS = [
+  { key: 'r32', label: 'Ronda de 32', brackets: BRACKET_R32 },
+  { key: 'r16', label: 'Octavos', brackets: BRACKET_R16 },
+  { key: 'qf', label: 'Cuartos', brackets: BRACKET_QF },
+  { key: 'sf', label: 'Semis', brackets: BRACKET_SF },
+  { key: 'final', label: 'Final', brackets: BRACKET_FINAL },
 ]
 
-// Map matchNumber → which two parent matchNumbers feed into it
-const PARENT_MAP: Record<number, [number, number]> = {}
-;[...BRACKET_R16, ...BRACKET_QF, ...BRACKET_SF, ...BRACKET_FINAL].forEach(({ matchNumber, homeSlot, awaySlot }) => {
-  const hm = homeSlot.match(/^W(\d+)$/)
-  const am = awaySlot.match(/^W(\d+)$/)
-  if (hm && am) {
-    PARENT_MAP[matchNumber] = [parseInt(hm[1]), parseInt(am[1])]
-  }
-})
-
-function filledCount(brackets: typeof BRACKET_R32, preds: PredictionMap) {
+function filledCount(brackets: { matchNumber: number }[], preds: PredictionMap) {
   return brackets.filter((b) => preds[b.matchNumber] != null).length
 }
 
@@ -70,93 +83,118 @@ export default function BracketTree({
   onPenWinner,
   onSave,
 }: Props) {
-  const matchMap = new Map(resolvedBracket.map((m) => [m.matchNumber, m]))
-  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map())
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [lines, setLines] = useState<SvgLine[]>([])
+  const matchMap = useMemo(
+    () => new Map(resolvedBracket.map((m) => [m.matchNumber, m])),
+    [resolvedBracket]
+  )
 
-  const setRef = useCallback((mn: number) => (el: HTMLDivElement | null) => {
-    if (el) cardRefs.current.set(mn, el)
-    else cardRefs.current.delete(mn)
-  }, [])
+  // Compute connector lines purely from precomputed positions — no DOM access
+  const lines = useMemo(() => {
+    const result: { d: string; color: string; key: string }[] = []
 
-  useLayoutEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-    const containerRect = container.getBoundingClientRect()
-    const newLines: SvgLine[] = []
+    ;[...BRACKET_R16, ...BRACKET_QF, ...BRACKET_SF, ...BRACKET_FINAL].forEach(
+      ({ matchNumber, homeSlot, awaySlot }) => {
+        const hm = homeSlot.match(/^W(\d+)$/)
+        const am = awaySlot.match(/^W(\d+)$/)
+        if (!hm || !am) return
 
-    const allChildBrackets = [...BRACKET_R16, ...BRACKET_QF, ...BRACKET_SF, ...BRACKET_FINAL]
+        const parentA = parseInt(hm[1])
+        const parentB = parseInt(am[1])
 
-    for (const { matchNumber, homeSlot, awaySlot } of allChildBrackets) {
-      const hm = homeSlot.match(/^W(\d+)$/)
-      const am = awaySlot.match(/^W(\d+)$/)
-      if (!hm || !am) continue
+        const yA = MATCH_Y[parentA]
+        const yB = MATCH_Y[parentB]
+        const yC = MATCH_Y[matchNumber]
 
-      const parentA = parseInt(hm[1])
-      const parentB = parseInt(am[1])
+        const colParent = MATCH_COL[parentA]
+        const xParentRight = ROUND_X[colParent] + CARD_W
+        const xChildLeft = ROUND_X[MATCH_COL[matchNumber]]
+        const midX = xParentRight + COL_GAP / 2
 
-      const elA = cardRefs.current.get(parentA)
-      const elB = cardRefs.current.get(parentB)
-      const elChild = cardRefs.current.get(matchNumber)
-      if (!elA || !elB || !elChild) continue
+        const hasPred = predictions[matchNumber] != null
+        const m = matchMap.get(matchNumber)
+        const colorA = hasPred ? '#86efac' : m?.home !== homeSlot ? '#93c5fd' : '#e5e7eb'
+        const colorB = hasPred ? '#86efac' : m?.away !== awaySlot ? '#93c5fd' : '#e5e7eb'
+        const colorMid = hasPred ? '#86efac' : '#e5e7eb'
 
-      const rA = elA.getBoundingClientRect()
-      const rB = elB.getBoundingClientRect()
-      const rC = elChild.getBoundingClientRect()
+        result.push({
+          d: `M ${xParentRight} ${yA} C ${midX} ${yA}, ${midX} ${yC}, ${midX} ${yC}`,
+          color: colorA,
+          key: `${parentA}-${matchNumber}-a`,
+        })
+        result.push({
+          d: `M ${xParentRight} ${yB} C ${midX} ${yB}, ${midX} ${yC}, ${midX} ${yC}`,
+          color: colorB,
+          key: `${parentB}-${matchNumber}-b`,
+        })
+        result.push({
+          d: `M ${midX} ${yC} L ${xChildLeft} ${yC}`,
+          color: colorMid,
+          key: `mid-${matchNumber}`,
+        })
+      }
+    )
 
-      const x1 = rA.right - containerRect.left
-      const y1 = rA.top + rA.height / 2 - containerRect.top
-      const x1b = rB.right - containerRect.left
-      const y1b = rB.top + rB.height / 2 - containerRect.top
-      const x2 = rC.left - containerRect.left
-      const y2 = rC.top + rC.height / 2 - containerRect.top
+    return result
+  }, [predictions, matchMap])
 
-      const mid = x1 + CONNECTOR_OFFSET
-      const midChild = x2 - CONNECTOR_OFFSET
+  const allMatches = [
+    ...BRACKET_R32,
+    ...BRACKET_R16,
+    ...BRACKET_QF,
+    ...BRACKET_SF,
+    ...BRACKET_FINAL,
+  ]
 
-      // Line from parent A to midpoint vertical
-      newLines.push({
-        d: `M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${mid} ${y2}`,
-        color: predictions[matchNumber] ? '#86efac' : matchMap.get(matchNumber)?.home !== homeSlot ? '#93c5fd' : '#e5e7eb',
-        key: `${parentA}-mid`,
-      })
-      // Line from parent B to midpoint vertical
-      newLines.push({
-        d: `M ${x1b} ${y1b} C ${mid} ${y1b}, ${mid} ${y2}, ${mid} ${y2}`,
-        color: predictions[matchNumber] ? '#86efac' : matchMap.get(matchNumber)?.away !== awaySlot ? '#93c5fd' : '#e5e7eb',
-        key: `${parentB}-mid`,
-      })
-      // Line from midpoint to child
-      newLines.push({
-        d: `M ${mid} ${y2} C ${midChild} ${y2}, ${midChild} ${y2}, ${x2} ${y2}`,
-        color: predictions[matchNumber] ? '#86efac' : '#e5e7eb',
-        key: `mid-${matchNumber}`,
-      })
-    }
+  return (
+    <div>
+      {/* Round headers */}
+      <div className="flex" style={{ gap: COL_GAP }}>
+        {COLUMNS.map((col) => (
+          <div key={col.key} className="shrink-0" style={{ width: CARD_W }}>
+            <RoundHeader
+              title={col.label}
+              total={col.brackets.length}
+              filled={filledCount(col.brackets, predictions)}
+            />
+          </div>
+        ))}
+      </div>
 
-    setLines(newLines)
-  }, [resolvedBracket, predictions, matchMap])
-
-  function renderColumn(
-    brackets: typeof BRACKET_R32,
-    label: string,
-    isFinalRound = false
-  ) {
-    const count = filledCount(brackets, predictions)
-    return (
-      <div className="flex flex-col items-center shrink-0">
-        <RoundHeader title={label} total={brackets.length} filled={count} />
-        <div
-          className="flex flex-col justify-around"
-          style={{ gap: isFinalRound ? 0 : ROW_GAP_R32 }}
+      {/* Cards and SVG connector lines */}
+      <div className="relative" style={{ width: TOTAL_W, height: CONTAINER_H }}>
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          width={TOTAL_W}
+          height={CONTAINER_H}
+          aria-hidden="true"
         >
-          {brackets.map(({ matchNumber }) => {
-            const m = matchMap.get(matchNumber)
-            if (!m) return null
-            return (
+          {lines.map((l) => (
+            <path
+              key={l.key}
+              d={l.d}
+              stroke={l.color}
+              strokeWidth={1.5}
+              fill="none"
+              strokeLinecap="round"
+            />
+          ))}
+        </svg>
+
+        {/* Main bracket matches */}
+        {allMatches.map(({ matchNumber }) => {
+          const m = matchMap.get(matchNumber)
+          if (!m) return null
+          return (
+            <div
+              key={matchNumber}
+              style={{
+                position: 'absolute',
+                left: ROUND_X[MATCH_COL[matchNumber]],
+                top: MATCH_Y[matchNumber] - CARD_H / 2,
+                width: CARD_W,
+              }}
+            >
               <BracketMatchCard
-                key={matchNumber}
                 matchNumber={matchNumber}
                 home={m.home}
                 away={m.away}
@@ -164,158 +202,42 @@ export default function BracketTree({
                 status={savingStatus[matchNumber] ?? 'idle'}
                 locked={lockedMatches.has(matchNumber)}
                 disabled={lockedMatches.has(matchNumber) || deadlinePassed}
-                isFinal={isFinalRound}
-                cardRef={setRef(matchNumber)}
+                isFinal={matchNumber === 104}
                 onScoreChange={(f, v) => onScoreChange(matchNumber, f, v)}
                 onPenWinner={(w) => onPenWinner(matchNumber, w)}
                 onSave={() => onSave(matchNumber)}
               />
-            )
-          })}
-        </div>
-      </div>
-    )
-  }
-
-  // Third place — rendered separately below semis area
-  const thirdMatch = matchMap.get(103)
-
-  return (
-    <div className="relative" ref={containerRef}>
-      {/* SVG connector lines */}
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        aria-hidden="true"
-        style={{ zIndex: 0 }}
-      >
-        {lines.map((l) => (
-          <path
-            key={l.key}
-            d={l.d}
-            stroke={l.color}
-            strokeWidth={1.5}
-            fill="none"
-            strokeLinecap="round"
-          />
-        ))}
-      </svg>
-
-      <div className="flex gap-[56px] items-start relative" style={{ zIndex: 1 }}>
-        {/* R32 */}
-        <div className="flex flex-col items-center shrink-0">
-          <RoundHeader
-            title="Ronda de 32"
-            total={BRACKET_R32.length}
-            filled={filledCount(BRACKET_R32, predictions)}
-          />
-          {/* Two visual sub-columns of 8 to mirror real bracket split */}
-          <div className="flex flex-col gap-2">
-            {BRACKET_R32.map(({ matchNumber }) => {
-              const m = matchMap.get(matchNumber)
-              if (!m) return null
-              return (
-                <BracketMatchCard
-                  key={matchNumber}
-                  matchNumber={matchNumber}
-                  home={m.home}
-                  away={m.away}
-                  prediction={predictions[matchNumber]}
-                  status={savingStatus[matchNumber] ?? 'idle'}
-                  locked={lockedMatches.has(matchNumber)}
-                  disabled={lockedMatches.has(matchNumber) || deadlinePassed}
-                  cardRef={setRef(matchNumber)}
-                  onScoreChange={(f, v) => onScoreChange(matchNumber, f, v)}
-                  onPenWinner={(w) => onPenWinner(matchNumber, w)}
-                  onSave={() => onSave(matchNumber)}
-                />
-              )
-            })}
-          </div>
-        </div>
-
-        {/* R16 */}
-        {renderColumn(BRACKET_R16, 'Octavos')}
-
-        {/* QF */}
-        {renderColumn(BRACKET_QF, 'Cuartos')}
-
-        {/* SF + 3rd + Final */}
-        <div className="flex flex-col items-center shrink-0">
-          <RoundHeader
-            title="Semis"
-            total={BRACKET_SF.length}
-            filled={filledCount(BRACKET_SF, predictions)}
-          />
-          <div className="flex flex-col gap-2">
-            {BRACKET_SF.map(({ matchNumber }) => {
-              const m = matchMap.get(matchNumber)
-              if (!m) return null
-              return (
-                <BracketMatchCard
-                  key={matchNumber}
-                  matchNumber={matchNumber}
-                  home={m.home}
-                  away={m.away}
-                  prediction={predictions[matchNumber]}
-                  status={savingStatus[matchNumber] ?? 'idle'}
-                  locked={lockedMatches.has(matchNumber)}
-                  disabled={lockedMatches.has(matchNumber) || deadlinePassed}
-                  cardRef={setRef(matchNumber)}
-                  onScoreChange={(f, v) => onScoreChange(matchNumber, f, v)}
-                  onPenWinner={(w) => onPenWinner(matchNumber, w)}
-                  onSave={() => onSave(matchNumber)}
-                />
-              )
-            })}
-          </div>
-
-          {/* Third place */}
-          {thirdMatch && (
-            <div className="mt-6 flex flex-col items-center">
-              <span className="text-[10px] text-gray-400 font-medium mb-1 uppercase tracking-wide">
-                3er y 4º puesto
-              </span>
-              <BracketMatchCard
-                matchNumber={103}
-                home={thirdMatch.home}
-                away={thirdMatch.away}
-                prediction={predictions[103]}
-                status={savingStatus[103] ?? 'idle'}
-                locked={lockedMatches.has(103)}
-                disabled={lockedMatches.has(103) || deadlinePassed}
-                cardRef={setRef(103)}
-                onScoreChange={(f, v) => onScoreChange(103, f, v)}
-                onPenWinner={(w) => onPenWinner(103, w)}
-                onSave={() => onSave(103)}
-              />
             </div>
-          )}
-        </div>
+          )
+        })}
 
-        {/* Final */}
-        <div className="flex flex-col items-center shrink-0">
-          <RoundHeader
-            title="Final"
-            total={1}
-            filled={predictions[104] != null ? 1 : 0}
-          />
-          {matchMap.get(104) && (
+        {/* Third place match */}
+        {matchMap.get(103) && (
+          <div
+            style={{
+              position: 'absolute',
+              left: ROUND_X[3],
+              top: THIRD_TOP,
+              width: CARD_W,
+            }}
+          >
+            <span className="block text-[10px] text-gray-400 font-medium mb-1 uppercase tracking-wide text-center">
+              3er y 4º puesto
+            </span>
             <BracketMatchCard
-              matchNumber={104}
-              home={matchMap.get(104)!.home}
-              away={matchMap.get(104)!.away}
-              prediction={predictions[104]}
-              status={savingStatus[104] ?? 'idle'}
-              locked={lockedMatches.has(104)}
-              disabled={lockedMatches.has(104) || deadlinePassed}
-              isFinal
-              cardRef={setRef(104)}
-              onScoreChange={(f, v) => onScoreChange(104, f, v)}
-              onPenWinner={(w) => onPenWinner(104, w)}
-              onSave={() => onSave(104)}
+              matchNumber={103}
+              home={matchMap.get(103)!.home}
+              away={matchMap.get(103)!.away}
+              prediction={predictions[103]}
+              status={savingStatus[103] ?? 'idle'}
+              locked={lockedMatches.has(103)}
+              disabled={lockedMatches.has(103) || deadlinePassed}
+              onScoreChange={(f, v) => onScoreChange(103, f, v)}
+              onPenWinner={(w) => onPenWinner(103, w)}
+              onSave={() => onSave(103)}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   )
