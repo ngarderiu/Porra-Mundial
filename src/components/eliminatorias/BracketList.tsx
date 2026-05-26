@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import {
   BRACKET_R32,
   BRACKET_R16,
@@ -43,7 +44,10 @@ export default function BracketList({
   onPenWinner,
   onSave,
 }: Props) {
-  const matchMap = new Map(resolvedBracket.map((m) => [m.matchNumber, m]))
+  const matchMap = useMemo(
+    () => new Map(resolvedBracket.map((m) => [m.matchNumber, m])),
+    [resolvedBracket]
+  )
 
   return (
     <div className="space-y-6">

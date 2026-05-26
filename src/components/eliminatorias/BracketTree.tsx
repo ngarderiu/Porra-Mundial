@@ -1,6 +1,6 @@
 'use client'
 
-import { useLayoutEffect, useRef, useState, useCallback } from 'react'
+import { useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react'
 import {
   BRACKET_R32,
   BRACKET_R16,
@@ -70,7 +70,10 @@ export default function BracketTree({
   onPenWinner,
   onSave,
 }: Props) {
-  const matchMap = new Map(resolvedBracket.map((m) => [m.matchNumber, m]))
+  const matchMap = useMemo(
+    () => new Map(resolvedBracket.map((m) => [m.matchNumber, m])),
+    [resolvedBracket]
+  )
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const containerRef = useRef<HTMLDivElement>(null)
   const [lines, setLines] = useState<SvgLine[]>([])
