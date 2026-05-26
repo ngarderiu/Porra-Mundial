@@ -4,10 +4,7 @@ import { useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { GROUPS } from '@/lib/constants'
 import { upsertPrediction } from '@/lib/supabase/predictions-client'
-import GroupTabs from './GroupTabs'
-import GroupMatchList from './GroupMatchList'
-import GroupStandings from './GroupStandings'
-import ProgressBar from './ProgressBar'
+import GroupCard from './GroupCard'
 import type { Match, Team } from '@/types'
 import type { PredictionMap } from '@/lib/bracket'
 
@@ -22,6 +19,8 @@ interface Props {
   deadlineIso: string
 }
 
+const GROUP_LETTERS = Object.keys(GROUPS)
+
 export default function GruposClient({
   teams,
   matches,
@@ -31,7 +30,6 @@ export default function GruposClient({
   deadlineIso,
 }: Props) {
   const [predictions, setPredictions] = useState<PredictionMap>(initialPredictions)
-  const [activeGroup, setActiveGroup] = useState('A')
   const [savingStatus, setSavingStatus] = useState<Record<number, SaveStatus>>({})
 
   const lockedMatches = useMemo(() => new Set(lockedMatchNumbers), [lockedMatchNumbers])
@@ -43,12 +41,16 @@ export default function GruposClient({
     return map
   }, [teams])
 
-  const groupLetters = Object.keys(GROUPS)
-  const activeGroupIdx = groupLetters.indexOf(activeGroup)
-
-  const groupMatches = useMemo(() => {
-    return matches.filter((m) => m.group_letter === activeGroup)
-  }, [matches, activeGroup])
+  const matchesByGroup = useMemo(() => {
+    const byGroup: Record<string, Match[]> = {}
+    for (const letter of GROUP_LETTERS) byGroup[letter] = []
+    for (const m of matches) {
+      if (m.group_letter && byGroup[m.group_letter]) {
+        byGroup[m.group_letter].push(m)
+      }
+    }
+    return byGroup
+  }, [matches])
 
   const filledCount = useMemo(() => {
     let count = 0
@@ -57,6 +59,17 @@ export default function GruposClient({
     }
     return count
   }, [predictions])
+
+  const completedGroups = useMemo(() => {
+    return GROUP_LETTERS.filter((_, idx) => {
+      for (let p = 0; p < 6; p++) {
+        if (predictions[idx * 6 + p + 1] == null) return false
+      }
+      return true
+    }).length
+  }, [predictions])
+
+  const allComplete = filledCount >= 72
 
   const handleScoreChange = useCallback(
     (matchNumber: number, field: 'homeGoals' | 'awayGoals', value: number) => {
@@ -91,80 +104,114 @@ export default function GruposClient({
   )
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-950">
-      {/* Fixed header */}
-      <header className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="max-w-2xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between mb-2">
-            <h1 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              Mi Porra · Grupos
-            </h1>
+    <div className="min-h-screen bg-green-900">
+      {/* Sticky header */}
+      <header className="sticky top-0 z-10 bg-green-950 text-white shadow-lg">
+        {/* Title row */}
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+          <h1 className="text-base font-bold whitespace-nowrap">🏆 Porra Mundial 2026</h1>
+          <div className="flex items-center gap-1.5 shrink-0">
             <Link
-              href={filledCount >= 72 ? '/porra/eliminatorias' : '#'}
-              aria-disabled={filledCount < 72}
-              className={`text-sm font-medium px-3 py-1.5 rounded-lg transition-colors duration-150 ${
-                filledCount >= 72
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
-                  : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 pointer-events-none'
+              href="/ranking"
+              className="text-xs px-2.5 py-1.5 rounded-md bg-green-800 hover:bg-green-700 text-green-100 transition-colors"
+            >
+              Ranking
+            </Link>
+            <Link
+              href={allComplete ? '/porra/eliminatorias' : '#'}
+              aria-disabled={!allComplete}
+              className={`text-xs px-2.5 py-1.5 rounded-md font-semibold transition-colors ${
+                allComplete
+                  ? 'bg-green-600 hover:bg-green-500 text-white'
+                  : 'bg-green-800 text-green-500 pointer-events-none'
               }`}
             >
               Eliminatorias →
             </Link>
           </div>
-          <ProgressBar predictions={predictions} />
         </div>
-        <GroupTabs
-          activeGroup={activeGroup}
-          predictions={predictions}
-          onSelect={setActiveGroup}
-        />
+
+        {/* Phase tabs */}
+        <div className="max-w-7xl mx-auto px-4 pb-2 flex items-center gap-2">
+          <span className="flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white text-green-900 text-sm font-semibold">
+            ⚽ Fase de Grupos
+          </span>
+          <Link
+            href={allComplete ? '/porra/eliminatorias' : '#'}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              allComplete
+                ? 'bg-green-700 text-white hover:bg-green-600'
+                : 'bg-green-800/50 text-green-400 pointer-events-none'
+            }`}
+          >
+            🏆 Eliminatorias
+          </Link>
+        </div>
+
+        {/* Progress bar row */}
+        <div className="max-w-7xl mx-auto px-4 py-2.5 border-t border-green-800/60 flex flex-wrap items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-green-200">
+              <span className="font-semibold text-white">Progreso: {completedGroups}/12</span>
+              {' grupos completos'}
+              <span className="text-green-400 ml-1.5 hidden sm:inline">· Ingrese los resultados de cada partido</span>
+            </p>
+            <div className="mt-1 h-1.5 w-full max-w-[240px] rounded-full bg-green-800 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all duration-300 ${
+                  allComplete ? 'bg-green-400' : 'bg-amber-400'
+                }`}
+                style={{ width: `${Math.round((filledCount / 72) * 100)}%` }}
+                role="progressbar"
+                aria-valuenow={filledCount}
+                aria-valuemin={0}
+                aria-valuemax={72}
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {!allComplete && (
+              <button
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="text-xs px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium transition-colors"
+              >
+                Complete todos los partidos
+              </button>
+            )}
+            <Link
+              href={allComplete ? '/porra/eliminatorias' : '#'}
+              aria-disabled={!allComplete}
+              className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors whitespace-nowrap ${
+                allComplete
+                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                  : 'bg-green-700/40 text-green-500 pointer-events-none opacity-60'
+              }`}
+            >
+              Generar Eliminatorias →
+            </Link>
+          </div>
+        </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 max-w-2xl mx-auto w-full px-0 sm:px-4 py-4">
-        <div className="bg-white dark:bg-gray-900 sm:rounded-xl sm:border border-gray-200 dark:border-gray-700 overflow-hidden">
-          {/* Group header */}
-          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
-            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Grupo {activeGroup}
-            </h2>
-          </div>
-
-          {/* Match list */}
-          <GroupMatchList
-            matches={groupMatches}
-            predictions={predictions}
-            savingStatus={savingStatus}
-            lockedMatches={lockedMatches}
-            deadlinePassed={deadlinePassed}
-            teamNameById={teamNameById}
-            onScoreChange={handleScoreChange}
-            onSave={handleSave}
-          />
-        </div>
-
-        {/* Standings */}
-        <div className="px-4 sm:px-0">
-          <GroupStandings groupLetter={activeGroup} predictions={predictions} />
+      {/* Groups grid */}
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {GROUP_LETTERS.map((letter) => (
+            <GroupCard
+              key={letter}
+              groupLetter={letter}
+              matches={matchesByGroup[letter] ?? []}
+              predictions={predictions}
+              savingStatus={savingStatus}
+              lockedMatches={lockedMatches}
+              deadlinePassed={deadlinePassed}
+              teamNameById={teamNameById}
+              onScoreChange={handleScoreChange}
+              onSave={handleSave}
+            />
+          ))}
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 px-4 py-3 max-w-2xl mx-auto w-full">
-        <Link
-          href={filledCount >= 72 ? '/porra/eliminatorias' : '#'}
-          aria-disabled={filledCount < 72}
-          className={`block w-full text-center py-3 rounded-xl font-semibold text-sm transition-colors duration-150 ${
-            filledCount >= 72
-              ? 'bg-blue-600 text-white hover:bg-blue-700'
-              : 'bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 pointer-events-none'
-          }`}
-        >
-          {filledCount >= 72
-            ? 'Ir a Eliminatorias →'
-            : `Rellena ${72 - filledCount} partidos más para continuar`}
-        </Link>
-      </footer>
     </div>
   )
 }
